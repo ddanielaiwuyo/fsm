@@ -1,4 +1,12 @@
 package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"time"
+)
+
 // NOTEs: terms act as logical clocks in Raft. It's possible
 // for servers not to observer a whole election on term. One
 // correctness for Raft is that, there must at most be one leader
@@ -38,52 +46,22 @@ A node remains a [Candidate] until one of these events occur:
 2. Another server establishes itself as [Leader]
 3. A period of time goes by without a winner
 
-While in a [Candidate] state, the node recvs an AppendEntryRPC from another 
+While in a [Candidate] state, the node recvs an AppendEntryRPC from another
 node that claims to be a leader, it must first check that the RPC's term, is
 at least as large as it's own term. Then the [Candiate] recognizes the [Leader]
 as legitimate and returns to a [Follower], otherwise, the candidate rejects it
 
 In the occurence of a split vote where many [Follower]s become [Candidate]s
-and there's no majority vote, the candidate will timeout again and start a new 
-election. Election timeouts are randomized to avoid split votes, typically 
+and there's no majority vote, the candidate will timeout again and start a new
+election. Election timeouts are randomized to avoid split votes, typically
 chosen at a fixed interval of 150-300ms. For each new election, the [electionTimeout]
 is randomised
 */
 
-import (
-	"sync"
-	"time"
-)
-
-type RaftState int
-
-const (
-	Leader RaftState = iota
-	Follower
-	Candidate
-)
-
-type Term struct {
-	leader      string
-	currentTerm uint64
-}
-
-type Raft struct {
-	mu sync.Mutex
-	// Current state of the Machine
-	state RaftState
-	term  Term
-
-	// Max amount of time to go without recving communication from a server
-	// before starting a new election to choose a new [Leader]
-	electionTimeout time.Duration
-}
-
-type RequestVoteRPC struct {
-	Term uint64
-}
-
-type AppendEntryRPC struct {
-	Term     uint64
-	LogEntry string
+func main() {
+	electionTimeout := generateRandomTimeout(time.Second)
+	raft := NewRaft("localhost:8080", []string{}, electionTimeout)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	raft.Run(ctx)
 }
