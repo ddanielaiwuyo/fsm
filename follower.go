@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// runFollower has an internal timer that goes off on [Raft.electionTimeout]
+// When the timer fire, it transists into a [Candidate] state. If an [AppendEntry] rpc
+// or `heartbeat` arrives before the timer fires, the node remains in this state 
+// and resets it's internal timer. If it receives an [AppendEntry] rpcs from another
+// nodes whose term is higher it updates this nodes term to the rpc provided in the request
 func (r *Raft) runFollower(opts *Opts) {
 	var o *Opts
 	if opts == nil {
