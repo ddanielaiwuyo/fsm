@@ -28,7 +28,7 @@ type AppendEntryRes struct {
 var term = 100
 
 func lead(d *rpc.Client) {
-	ticker := time.NewTicker(1)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	req := AppendEntryReq{
 		Term: uint64(term),

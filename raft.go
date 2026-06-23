@@ -47,12 +47,19 @@ type Raft struct {
 	peers           []string
 	heartbeat       chan struct{}
 	recentChange    atomic.Bool
+
+	// this is used to cancel or tell states to terminate
+	stateCtx    context.Context
+	stateCancel context.CancelFunc
+	activeState *atomic.Uint64
+	transition  chan RaftState
 }
 
 func NewRaft(address string, peers []string, electionTimeout time.Duration) *Raft {
 	incoming := make(chan RPC)
 	outgoing := make(chan any)
 	heartbeat := make(chan struct{})
+	transition := make(chan RaftState)
 
 	server := NewServer(incoming, outgoing)
 	return &Raft{
@@ -67,6 +74,8 @@ func NewRaft(address string, peers []string, electionTimeout time.Duration) *Raf
 		heartbeat:       heartbeat,
 		incoming:        incoming,
 		recentChange:    atomic.Bool{},
+		activeState:     &atomic.Uint64{},
+		transition:      transition,
 	}
 }
 
@@ -93,6 +102,7 @@ func (r *Raft) Run(parentCtx context.Context) {
 			log.Printf("(node) recvd incoming reqRPC: %+v\n", reqRPC)
 			switch reqRPC.kind {
 			case AppendEntry:
+				log.Printf("(node) appendEntry reqRPC detected")
 				go r.handleAppendEntry(&reqRPC)
 			}
 
@@ -109,16 +119,15 @@ func (r *Raft) Run(parentCtx context.Context) {
 			r.recentChange.Store(false)
 			switch currentState {
 			case Leader:
-				cancel)_
 				log.Println("(node) leader mode not yet implementd, stub")
 				r.runLeader(ctx)
 			case Follower:
-				r.runFollower(ctx)
+				r.runFollower()
 			case Candidate:
-				r.runCandidate(ctx)
+				r.runCandidate()
 			}
 		} else {
-			r.runFollower(ctx)
+			r.runFollower()
 		}
 	}
 
@@ -147,6 +156,7 @@ func (r *Raft) handleAppendEntry(req *RPC) {
 				err:          nil,
 			},
 		}:
+			log.Printf("sent reply inside sub_routine")
 		case <-timer.C:
 			if !timer.Stop() {
 				<-timer.C
@@ -227,9 +237,9 @@ func (r *Raft) Start(parentCtx context.Context) {
 		case Leader:
 			r.runLeader(ctx)
 		case Follower:
-			r.runFollower(ctx)
+			r.runFollower()
 		case Candidate:
-			r.runCandidate(ctx)
+			r.runCandidate()
 		}
 	}
 }

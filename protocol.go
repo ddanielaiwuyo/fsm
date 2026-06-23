@@ -23,7 +23,7 @@ func (s *Server) AppendEntryRPC(req AppendEntryReq, res *AppendEntryRes) error {
 	log.Printf("(server) recvd appendEntryRPC %+v\n", req)
 	replyCh := make(chan RPCReply)
 	s.incoming <- RPC{kind: AppendEntry, payload: req, reply: replyCh}
-	log.Println()
+	log.Println("(server) was able to send rpc to node")
 	reply := <-replyCh
 	switch reply.kind {
 	case AppendEntry:

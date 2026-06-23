@@ -63,5 +63,6 @@ func main() {
 	raft := NewRaft("localhost:8080", []string{}, electionTimeout)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	raft.Run(ctx)
+	// raft.Run(ctx)
+	raft.Begin(ctx)
 }
