@@ -3,9 +3,69 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 )
+
+func (r *Raft) runCandidate(opts *Opts) {
+	var o *Opts
+	if opts == nil {
+		o = defaultOpts()
+	} else {
+		o = opts
+	}
+
+	o.log.SetPrefix(fmt.Sprintf("(%s:candidate) ", r.id))
+
+	o.log.Println("canididate state not implemented yet, increasing term")
+	r.incrementTerm()
+
+	timeout := time.NewTimer(randomTimeout(time.Millisecond))
+	defer func() {
+		if !timeout.Stop() {
+			go func() { <-timeout.C }()
+		}
+
+		o.log.Println("drained timer")
+
+	}()
+
+	oneshot := randomTimeout(time.Millisecond)
+	oneshotTimer := time.NewTimer(oneshot)
+
+	select {
+	case <-timeout.C:
+		o.log.Println("electoralTimeout reached, dropping to follower")
+		r.transition <- Follower
+		return
+	case <-r.stateCtx.Done():
+		return
+	case <-oneshotTimer.C:
+		o.log.Println("oneshot timer hit, using electoral stub")
+		if int(oneshot.Seconds())%2 == 0 {
+			r.transition <- Leader
+		} else {
+			r.transition <- Follower
+		}
+		return
+
+	case rpc := <-r.incoming:
+		o.log.Printf("recvd rpc: %+v\n", rpc.payload)
+		switch rpc.kind {
+		case AppendEntry:
+			payload, ok := rpc.payload.(AppendEntryReq)
+			if !ok {
+				o.log.Panicf("expected AppendEntryReq, got: %+v\n\n", payload)
+			}
+
+			if r.handleAppendEntryRPC(o, payload, rpc.reply) {
+				o.log.Printf("dropping from Candidate to Follower due to higher rpc: %+v\n", payload)
+				r.transition <- Follower
+				return
+			}
+		}
+
+	}
+}
 
 // func (r *Raft) Begin(parentCtx context.Context) {
 // 	errch := make(chan error)
@@ -63,57 +123,57 @@ import (
 // 	}
 // }
 
-func (r *Raft) startFollower() {
-	timer := time.NewTimer(r.electionTimeout)
-	defer func() {
-		if !timer.Stop() {
-			go func() { <-timer.C }()
-		}
-		log.Println("(d_follower) exiting")
-	}()
-
-	resetTimer := func() {
-		if !timer.Stop() {
-			<-timer.C
-		}
-		timer.Reset(r.electionTimeout)
-	}
-
-	for {
-		select {
-		case <-r.stateCtx.Done():
-			return
-		case rpc := <-r.incoming:
-			if rpc.kind == AppendEntry {
-				log.Println("(d_follower) heartbeat recvd, restarting timer")
-				resetTimer()
-				log.Println("(d_follower) sending rpcReply")
-				rpc.reply <- RPCReply{kind: AppendEntry, payload: &AppendEntryRes{
-					Term:         r.term.Load(),
-					Data:         "I yield to you",
-					Acknowledged: true,
-					Id:           "(d_follower)-single-node-server",
-					err:          nil,
-				}}
-				log.Println("(d_follower) sent rpcReply")
-			} else {
-				log.Printf("(d_follower) unexpected rpc: %+v\nsending rpcReply\n", rpc.payload)
-				rpc.reply <- RPCReply{kind: AppendEntry, payload: &AppendEntryRes{
-					Term:         r.term.Load(),
-					Data:         "I don't undertand this rpc",
-					Acknowledged: false,
-					Id:           "(d_follower)-single-node-server",
-					err:          nil,
-				}}
-				log.Println("(d_follower) sent rpcReply")
-			}
-		case <-timer.C:
-			log.Println("(d_follower) timer fired, going to leader mode")
-			r.transition <- Leader
-			return
-		}
-	}
-}
+// func (r *Raft) startFollower() {
+// 	timer := time.NewTimer(r.electionTimeout)
+// 	defer func() {
+// 		if !timer.Stop() {
+// 			go func() { <-timer.C }()
+// 		}
+// 		log.Println("(d_follower) exiting")
+// 	}()
+//
+// 	resetTimer := func() {
+// 		if !timer.Stop() {
+// 			<-timer.C
+// 		}
+// 		timer.Reset(r.electionTimeout)
+// 	}
+//
+// 	for {
+// 		select {
+// 		case <-r.stateCtx.Done():
+// 			return
+// 		case rpc := <-r.incoming:
+// 			if rpc.kind == AppendEntry {
+// 				log.Println("(d_follower) heartbeat recvd, restarting timer")
+// 				resetTimer()
+// 				log.Println("(d_follower) sending rpcReply")
+// 				rpc.reply <- RPCReply{kind: AppendEntry, payload: &AppendEntryRes{
+// 					Term:         r.term.Load(),
+// 					Data:         "I yield to you",
+// 					Acknowledged: true,
+// 					Id:           "(d_follower)-single-node-server",
+// 					err:          nil,
+// 				}}
+// 				log.Println("(d_follower) sent rpcReply")
+// 			} else {
+// 				log.Printf("(d_follower) unexpected rpc: %+v\nsending rpcReply\n", rpc.payload)
+// 				rpc.reply <- RPCReply{kind: AppendEntry, payload: &AppendEntryRes{
+// 					Term:         r.term.Load(),
+// 					Data:         "I don't undertand this rpc",
+// 					Acknowledged: false,
+// 					Id:           "(d_follower)-single-node-server",
+// 					err:          nil,
+// 				}}
+// 				log.Println("(d_follower) sent rpcReply")
+// 			}
+// 		case <-timer.C:
+// 			log.Println("(d_follower) timer fired, going to leader mode")
+// 			r.transition <- Leader
+// 			return
+// 		}
+// 	}
+// }
 // func (r *Raft) startLeader() {
 // 	log.Println("(d-leader) started:", r.Diagnostics())
 // 	ticker := time.NewTicker(1 * time.Second)

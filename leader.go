@@ -13,7 +13,7 @@ type Opts struct {
 
 func defaultOpts() *Opts {
 	return &Opts{
-		log: *log.New(os.Stdout, "", log.Default().Flags()),
+		log: *log.New(os.Stdout, "", log.Default().Flags()|log.Lmicroseconds),
 	}
 }
 
@@ -33,7 +33,7 @@ func (r *Raft) runLeader(opts *Opts) {
 
 	o.log.Println("started: ", r.Diagnostics())
 	// TODO: this should be changed later, it's a second for easy debugging
-	const dur = 2 * time.Second
+	const dur = 50 * time.Millisecond
 	ticker := time.NewTicker(dur)
 	defer ticker.Stop()
 
@@ -63,7 +63,7 @@ func (r *Raft) runLeader(opts *Opts) {
 				rpc.reply <- RPCReply{
 					kind: AppendEntry,
 					payload: &AppendEntryRes{
-						Id:           "id",
+						Id:           r.id,
 						Term:         r.term.Load(),
 						Data:         "I dont understand this rpc call yet",
 						Acknowledged: false,
@@ -101,8 +101,7 @@ func (r *Raft) handleAppendEntryRPC(o *Opts, req AppendEntryReq, reply chan RPCR
 				Data:         "recvd larger rpc, yielded",
 				Acknowledged: true,
 			}}
-		o.log.Println("sentRPC  sending transition to Follower")
-		o.log.Println("sentRPC")
+		o.log.Println("sentReply to rpcClient")
 		return true
 	} else if req.Term < r.term.Load() {
 		o.log.Printf("recvd a lower termRPC: %d,  %s Ignoring rpc\n", req.Term, r.Diagnostics())
@@ -128,7 +127,7 @@ func (r *Raft) handleAppendEntryRPC(o *Opts, req AppendEntryReq, reply chan RPCR
 				Data:         "updated my logs",
 				Acknowledged: true,
 			}}
-		o.log.Println("sentRPC  sending transition to Follower")
+		o.log.Println("sent rpcReply to client-node")
 		o.log.Println("sentRPC")
 	}
 

@@ -20,7 +20,11 @@ const (
 	Candidate
 )
 
-// RPCKind tells what kind of payload we received and helps to determine what 
+const (
+	heartbeatInterval = time.Millisecond * 50
+)
+
+// RPCKind tells what kind of payload we received and helps to determine what
 // kind of reply to send back
 type RPCKind int
 
@@ -94,9 +98,9 @@ func NewRaft(
 
 	var l *log.Logger
 	if output == nil {
-		l = log.New(os.Stdout, "(raft) ", log.Default().Flags())
+		l = log.New(os.Stdout, "(raft) ", log.Default().Flags()|log.Lmicroseconds)
 	} else {
-		l = log.New(output, "(raft) ", log.Default().Flags())
+		l = log.New(output, "(raft) ", log.Default().Flags()|log.Lmicroseconds)
 	}
 
 	return &Raft{
@@ -134,7 +138,7 @@ func (r *Raft) Run(parentCtx context.Context) {
 
 	r.log.Println("starting raft node: ", r.Diagnostics())
 
-	go r.startFollower()
+	go r.runFollower(nil)
 
 	for {
 		select {
@@ -170,7 +174,7 @@ func (r *Raft) Run(parentCtx context.Context) {
 
 				r.electionTimeout = randomTimeout(time.Millisecond)
 				r.updateRaftState(raftState)
-				go r.startFollower()
+				go r.runFollower(nil)
 
 			case Candidate:
 				r.log.Println("received transition request to Candidate from: ", r.getCurrentState().String())
@@ -178,9 +182,8 @@ func (r *Raft) Run(parentCtx context.Context) {
 					r.log.Panicf("currently a Candidate and recvd Candidate transition currState: %s to: %s\n",
 						raftState.String(), r.getCurrentState().String())
 				}
-
-				panic("Candidate state not implemented yet!")
-				// go r.startCandidate()
+				r.updateRaftState(raftState)
+				go r.runCandidate(nil)
 			}
 		}
 	}
