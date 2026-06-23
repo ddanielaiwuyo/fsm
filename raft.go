@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math/rand/v2"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,167 +38,162 @@ type RPCReply struct {
 }
 
 type Raft struct {
-	mu              sync.RWMutex
-	state           RaftState
-	server          *Server
-	term            *atomic.Uint64
-	electionTimeout time.Duration
-	incoming        chan RPC
-	outgoing        chan any
-	address         string
-	peers           []string
-	heartbeat       chan struct{}
-	recentChange    atomic.Bool
+	id    string
+	mu    sync.RWMutex
+	state RaftState
 
-	// this is used to cancel or tell states to terminate
-	stateCtx    context.Context
-	stateCancel context.CancelFunc
-	activeState *atomic.Uint64
-	transition  chan RaftState
+	serverAddr string
+	server     *Server
+
+	// IPAddr of other nodes in a cluster
+	peers []string
+
+	// currentTerm this node is perceived to be in
+	term atomic.Uint64
+
+	// max amount of time before a node in the [Follower] state can go
+	// before transitioning into a [Leader]
+	electionTimeout time.Duration
+
+	// rpcRequests are forwarded from the server for the node to process
+	incoming chan RPC
+
+	// used by RaftStates to communicate what [RaftState] node should go into
+	// after their exit or preconditions are met
+	transition chan RaftState
+
+	// each raft state will be cancelled via this context. After each cancel
+	// a new ctx is created
+	stateCtx context.Context
+	// cancels the goroutine state of a [RaftState]
+	stateCtxCancel context.CancelFunc
+
+	// TODO: this is meant for debug purposes and will probably be enforced later
+	// on to be able to determine what states are running in a sep goroutine actively.
+	_inflight atomic.Uint64
+	log       *log.Logger
 }
 
-func NewRaft(address string, peers []string, electionTimeout time.Duration) *Raft {
-	incoming := make(chan RPC)
-	outgoing := make(chan any)
-	heartbeat := make(chan struct{})
-	transition := make(chan RaftState)
+const (
+	bufferChanSize = 1
+)
 
-	server := NewServer(incoming, outgoing)
+func NewRaft(
+	id string,
+	addr string,
+	peers []string,
+	electionTimeout time.Duration,
+	output io.Writer,
+) *Raft {
+	incoming := make(chan RPC, bufferChanSize)
+	// we only want one state transition to happen at a time
+	transition := make(chan RaftState)
+	server := NewServer(incoming, nil)
+
+	var l *log.Logger
+	if output == nil {
+		l = log.New(os.Stdout, "(raft) ", log.Default().Flags())
+	} else {
+		l = log.New(output, "(raft) ", log.Default().Flags())
+	}
+
 	return &Raft{
+		id:              id,
 		mu:              sync.RWMutex{},
 		state:           Follower,
+		serverAddr:      addr,
 		server:          server,
-		address:         address,
 		peers:           peers,
-		term:            &atomic.Uint64{},
+		term:            atomic.Uint64{},
 		electionTimeout: electionTimeout,
-		outgoing:        outgoing,
-		heartbeat:       heartbeat,
 		incoming:        incoming,
-		recentChange:    atomic.Bool{},
-		activeState:     &atomic.Uint64{},
 		transition:      transition,
+		_inflight:       atomic.Uint64{},
+		log:             l,
 	}
 }
 
 func (r *Raft) Run(parentCtx context.Context) {
 	errCh := make(chan error)
-
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
+
 	go func() {
-		defer close(errCh)
-		if err := r.server.Listen(ctx, r.address); err != nil {
+		if err := r.server.Listen(ctx, r.serverAddr); err != nil {
+			log.Println("(node) error occured while starting the sever")
 			errCh <- err
 		}
 	}()
 
-	log.Println("raft started")
-	for {
-		ctx, cancel := context.WithCancel(parentCtx)
-		select {
-		case <-parentCtx.Done():
-			cancel()
-			return
-		case reqRPC := <-r.incoming:
-			log.Printf("(node) recvd incoming reqRPC: %+v\n", reqRPC)
-			switch reqRPC.kind {
-			case AppendEntry:
-				log.Printf("(node) appendEntry reqRPC detected")
-				go r.handleAppendEntry(&reqRPC)
-			}
+	stateCtx, stateCtxCancel := context.WithCancel(parentCtx)
+	// used to terminate states that might be running in the seperate routines
+	r.stateCtx = stateCtx
+	r.stateCtxCancel = stateCtxCancel
+	defer stateCtxCancel()
 
-		case err := <-errCh:
-			log.Println(err)
-			cancel()
-			return
-		default:
-		}
-
-		currentState := r.getCurrentState()
-		r.printDiagnostics()
-		if r.recentChange.Load() {
-			r.recentChange.Store(false)
-			switch currentState {
-			case Leader:
-				log.Println("(node) leader mode not yet implementd, stub")
-				r.runLeader(ctx)
-			case Follower:
-				r.runFollower()
-			case Candidate:
-				r.runCandidate()
-			}
-		} else {
-			r.runFollower()
-		}
-	}
-
-}
-
-// handleAppendEntry recevies RPC requests that are of the [AppendEntryReq] kind
-// It returns the response to the server via the [RPCReply.reply] channel, and
-// if the node is currently a Follower, it sends a heartbeat.
-//
-// Although not yet implemented, the node can disregard the AppendEntry by returning a
-// false reply in [AppendEntryRes.Acknowledged] field when it's currentTerm is higher
-// than that of the RPC request. In this case the heartbeat will not be sent. It also
-// updates the [Raft.term] and [Raft.state] of this node if the request's RPC is higher.
-func (r *Raft) handleAppendEntry(req *RPC) {
-	log.Println("(node) handling appendEntryRPC")
+	r.log.Println("starting raft node: ", r.Diagnostics())
 	go func() {
-		timer := time.NewTimer(300 * time.Millisecond)
-		select {
-		case req.reply <- RPCReply{
-			kind: AppendEntry,
-			payload: &AppendEntryRes{
-				Id:           "this_node",
-				Term:         r.term.Load(),
-				Data:         "testing AppendEntry RPC",
-				Acknowledged: true,
-				err:          nil,
-			},
-		}:
-			log.Printf("sent reply inside sub_routine")
-		case <-timer.C:
-			if !timer.Stop() {
-				<-timer.C
-			}
-			log.Println("(sub_routine) could not send appendRPCRes within 300ms, slow server")
-			return
-
-		}
+		r.startFollower()
 	}()
 
-	if r.getCurrentState() == Follower {
-		log.Println("(node) handled appendEntryRPC, sending heartbeat signal")
-		r.heartbeat <- struct{}{}
-	} else if r.getCurrentState() == Leader {
-		log.Println("(node) dropping node from Leader to Follower")
-		r.updateRaftState(Follower)
-	} else if r.getCurrentState() == Candidate {
-		log.Println("(node) dropping node from Candidate to Follower")
-		r.updateRaftState(Follower)
+	for {
+		select {
+		case <-parentCtx.Done():
+			return
+		case err := <-errCh:
+			r.log.Println("error from server: ", err)
+			return
+
+		case raftState := <-r.transition:
+			r.stateCtxCancel()
+			r.newStateContext(parentCtx)
+
+			switch raftState {
+			case Leader:
+				r.log.Println("received transition request to Leader from: ", r.getCurrentState())
+				if r.getCurrentState() == Leader {
+					r.log.Panicf("currently a Leader and recvd Leader transition currState: %s to: %s\n",
+						raftState.String(), r.getCurrentState().String())
+				}
+				r.electionTimeout = randomTimeout(time.Millisecond)
+				r.updateRaftState(raftState)
+				r.log.Println("updated state to Leader: ", r.Diagnostics())
+
+				go r.startLeader()
+			case Follower:
+				r.log.Println("received transition request to Follower from: ", r.getCurrentState())
+				if r.getCurrentState() == Follower {
+					r.log.Panicf("currently a Follower and recvd Follower transition currState: %s to: %s\n",
+						raftState.String(), r.getCurrentState().String())
+				}
+
+				r.electionTimeout = randomTimeout(time.Millisecond)
+				r.updateRaftState(raftState)
+				go r.startFollower()
+
+			case Candidate:
+				r.log.Println("received transition request to Candidate from: ", r.getCurrentState().String())
+				if r.getCurrentState() == Candidate {
+					r.log.Panicf("currently a Candidate and recvd Candidate transition currState: %s to: %s\n",
+						raftState.String(), r.getCurrentState().String())
+				}
+
+				panic("Candidate state not implemented yet!")
+				// go r.startCandidate()
+			}
+		}
 	}
-	log.Println("(node) handled appendEntryRPC")
 }
 
-func (r *Raft) handleRequestVote(req *RPC) {}
-
-func generateRandomTimeout(d time.Duration) time.Duration {
+func randomTimeout(d time.Duration) time.Duration {
 	minInterval, maxInterval := 100, 500
 	n := rand.IntN(maxInterval-minInterval) + minInterval
 
 	return d * time.Duration(n)
 }
 
-func (r *Raft) printDiagnostics() {
-	diagnostics := fmt.Sprintf("\nraft_diagnostics: { address: %s, state: %s, term: %d, electionTimeout: %s }\n\n",
-		r.address, r.state.String(), r.term.Load(), r.electionTimeout)
-	log.Println(diagnostics)
-}
-
-func (s RaftState) String() string {
-	switch s {
+func (rs RaftState) String() string {
+	switch rs {
 	case Candidate:
 		return "Candidate"
 	case Follower:
@@ -204,42 +201,6 @@ func (s RaftState) String() string {
 	case Leader:
 		return "Leader"
 	default:
-		return fmt.Sprintf("unexpected main.RaftState: %#v", s)
-	}
-}
-
-func (r *Raft) Start(parentCtx context.Context) {
-	errCh := make(chan error)
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
-	go func() {
-		defer close(errCh)
-		if err := r.server.Listen(ctx, r.address); err != nil {
-			errCh <- err
-			return
-		}
-	}()
-
-	log.Println("(raft) running raft machine")
-	for {
-		select {
-		case <-parentCtx.Done():
-			log.Println("(raft) parentCtx cancelled")
-			return
-		case err := <-errCh:
-			log.Println("(raft) error from server: ", err)
-			return
-		default:
-		}
-
-		raftState := r.getCurrentState()
-		switch raftState {
-		case Leader:
-			r.runLeader(ctx)
-		case Follower:
-			r.runFollower()
-		case Candidate:
-			r.runCandidate()
-		}
+		return fmt.Sprintf("unexpected main.RaftState: %#v", rs)
 	}
 }

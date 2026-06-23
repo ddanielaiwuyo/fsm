@@ -59,10 +59,17 @@ is randomised
 */
 
 func main() {
-	electionTimeout := generateRandomTimeout(time.Millisecond)
-	raft := NewRaft("localhost:8080", []string{}, electionTimeout)
+	electionTimeout := randomTimeout(time.Millisecond)
+	raft := NewRaft(
+		"single-node-test",
+		"localhost:8080",
+		[]string{},
+		electionTimeout,
+		nil,
+	)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	// raft.Run(ctx)
-	raft.Begin(ctx)
+	raft.Run(ctx)
 }

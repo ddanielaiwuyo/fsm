@@ -7,61 +7,61 @@ import (
 	"time"
 )
 
-func (r *Raft) Begin(parentCtx context.Context) {
-	errch := make(chan error)
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
-
-	go func() {
-		if err := r.server.Listen(ctx, r.address); err != nil {
-			log.Println("(server_subroutine) error occured, sending to node")
-			errch <- err
-		}
-	}()
-	log.Printf("(raft) node started: %s", r.Diagnostics())
-
-	stateCtx, stateCancel := context.WithCancel(context.Background())
-	r.stateCtx = stateCtx
-	r.stateCancel = stateCancel
-
-	defer r.stateCancel()
-
-	go func() {
-		r.startFollower()
-	}()
-
-	for {
-		select {
-		case <-parentCtx.Done():
-			return
-		case err := <-errch:
-			log.Println("error from server >> ", err)
-			panic("")
-		case raftState := <-r.transition:
-			r.stateCancel()
-			r.newStateContext(parentCtx)
-
-			switch raftState {
-			case Leader:
-				log.Println("(node) recvd transition to turn leader, replacing with folower")
-				r.electionTimeout = generateRandomTimeout(time.Millisecond)
-				r.updateRaftState(raftState)
-				go r.startLeader()
-				// go r.startFollower()
-			case Follower:
-				log.Println("(node) recvd transition to turn follower")
-				if r.getCurrentState() == Follower {
-					log.Panicf("(node) currently  a follower, recvd Follower transition currState: %s to: %s\n", raftState.String(), r.getCurrentState().String())
-				}
-
-				r.electionTimeout = generateRandomTimeout(time.Millisecond)
-				r.updateRaftState(raftState)
-        go r.startFollower()
-
-			}
-		}
-	}
-}
+// func (r *Raft) Begin(parentCtx context.Context) {
+// 	errch := make(chan error)
+// 	ctx, cancel := context.WithCancel(parentCtx)
+// 	defer cancel()
+//
+// 	go func() {
+// 		if err := r.server.Listen(ctx, r.address); err != nil {
+// 			log.Println("(server_subroutine) error occured, sending to node")
+// 			errch <- err
+// 		}
+// 	}()
+// 	log.Printf("(raft) node started: %s", r.Diagnostics())
+//
+// 	stateCtx, stateCancel := context.WithCancel(context.Background())
+// 	r.stateCtx = stateCtx
+// 	r.stateCancel = stateCancel
+//
+// 	defer r.stateCancel()
+//
+// 	go func() {
+// 		r.startFollower()
+// 	}()
+//
+// 	for {
+// 		select {
+// 		case <-parentCtx.Done():
+// 			return
+// 		case err := <-errch:
+// 			log.Println("error from server >> ", err)
+// 			panic("")
+// 		case raftState := <-r.transition:
+// 			r.stateCancel()
+// 			r.newStateContext(parentCtx)
+//
+// 			switch raftState {
+// 			case Leader:
+// 				log.Println("(node) recvd transition to turn leader, replacing with folower")
+// 				r.electionTimeout = generateRandomTimeout(time.Millisecond)
+// 				r.updateRaftState(raftState)
+// 				go r.startLeader()
+// 				// go r.startFollower()
+// 			case Follower:
+// 				log.Println("(node) recvd transition to turn follower")
+// 				if r.getCurrentState() == Follower {
+// 					log.Panicf("(node) currently  a follower, recvd Follower transition currState: %s to: %s\n", raftState.String(), r.getCurrentState().String())
+// 				}
+//
+// 				r.electionTimeout = generateRandomTimeout(time.Millisecond)
+// 				r.updateRaftState(raftState)
+//         go r.startFollower()
+//
+// 			}
+// 		}
+// 	}
+// }
 
 func (r *Raft) startFollower() {
 	timer := time.NewTimer(r.electionTimeout)
@@ -115,13 +115,13 @@ func (r *Raft) startFollower() {
 	}
 }
 func (r *Raft) startLeader() {
-  log.Println("(d-leader) started:", r.Diagnostics())
+	log.Println("(d-leader) started:", r.Diagnostics())
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-    case <-ticker.C:
-      log.Println("(d-leader) sending heartbeats to ye followers")
+		case <-ticker.C:
+			log.Println("(d-leader) sending heartbeats to ye followers")
 		case <-r.stateCtx.Done():
 			return
 		case rpc := <-r.incoming:
@@ -173,17 +173,14 @@ func (r *Raft) startLeader() {
 }
 
 
-func (r *Raft) stateManager(parentCtx context.Context) {
-}
-
 func (r *Raft) Diagnostics() string {
 	diagnostics := fmt.Sprintf("diagnostics: { address: %s, state: %s, term: %d, electionTimeout: %s }\n\n",
-		r.address, r.state.String(), r.term.Load(), r.electionTimeout)
+		r.serverAddr, r.state.String(), r.term.Load(), r.electionTimeout)
 	return diagnostics
 }
 
 func (r *Raft) newStateContext(parentCtx context.Context) {
 	ctx, cancel := context.WithCancel(parentCtx)
 	r.stateCtx = ctx
-	r.stateCancel = cancel
+	r.stateCtxCancel = cancel
 }
