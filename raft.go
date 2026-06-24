@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+const (
+	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms
+	minInterval = 100
+	maxInterval = 500
+)
+
 type RaftState int
 
 const (
@@ -189,12 +195,27 @@ func (r *Raft) Run(parentCtx context.Context) {
 	}
 }
 
-const (
-	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms
-	minInterval = 100
-	maxInterval = 500
-)
+// Updates the current state of this node
+func (r *Raft) updateRaftState(state RaftState) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.state = state
+}
 
+// getCurrentState returns the current state of the Node
+func (r *Raft) getCurrentState() RaftState {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	currentState := r.state
+	return currentState
+}
+
+func (r *Raft) incrementTerm() int {
+	return int(r.term.Add(1))
+}
+
+// randomTimeout generates a number between the [minInterval] and [maxInterval] 
+// and returns the duration [d]
 func randomTimeout(d time.Duration) time.Duration {
 	n := rand.IntN(maxInterval-minInterval) + minInterval
 
