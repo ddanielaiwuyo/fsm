@@ -71,19 +71,24 @@ const (
 func NewNode(id string, address string, peers []string) (*Node, error) {
 	raft := NewRaft(id)
 	incoming := make(chan RPC, defaultChanBuffer)
+
+	// purposely left unbuffered to enforce one state transition at a time
+	transition := make(chan RaftState)
+
 	server := NewServer(id, address, incoming)
 
 	prefix := fmt.Sprintf("(%s:node) ", id)
 	logger := log.New(os.Stdout, prefix, log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
 
 	return &Node{
-		id:       id,
-		address:  address,
-		raft:     raft,
-		incoming: incoming,
-		server:   server,
-		peers:    peers,
-		log:      logger,
+		id:         id,
+		address:    address,
+		raft:       raft,
+		incoming:   incoming,
+		transition: transition,
+		server:     server,
+		peers:      peers,
+		log:        logger,
 	}, nil
 }
 
@@ -101,6 +106,16 @@ func (n *Node) Run(parentCtx context.Context) error {
 		}
 	}()
 
+	stateCtx, stateCancel := context.WithCancel(ctx)
+	n.stateCtx = stateCtx
+	n.stateCtxCancel = stateCancel
+
+	defer stateCancel()
+
+	go func() {
+		n.runFollower()
+	}()
+
 	for {
 		select {
 		case <-parentCtx.Done():
@@ -108,6 +123,58 @@ func (n *Node) Run(parentCtx context.Context) error {
 		case err := <-errCh:
 			n.log.Println(err)
 			return nil
+
+		case raftState := <-n.transition:
+			switch raftState {
+			case Follower:
+				if n.raft.getState() == Follower {
+					n.log.Panic(`recvd transition into Follower while in Follower state`, n.Diagnostics())
+				}
+
+				n.log.Println("recvd transition to Follower",)
+				n.raft.updateState(raftState)
+				// cancel context and make a new one
+				n.stateCtxCancel()
+				n.newContext(ctx)
+
+				go n.runFollower()
+			case Leader:
+				if n.raft.getState() == Leader {
+					n.log.Panic(`recvd transition into Leader while in Leader state`, n.Diagnostics())
+				}
+
+				n.log.Println("recvd transition to Leader")
+				n.raft.updateState(raftState)
+				// cancel context and make a new one
+				n.stateCtxCancel()
+				n.newContext(ctx)
+
+				go n.runLeader()
+			case Candidate:
+				if n.raft.getState() == Leader {
+					n.log.Panic(`recvd transition into Candidate while in Candidate state`, n.Diagnostics())
+				}
+
+				n.log.Println("recvd transition to Candidate")
+				n.raft.updateState(raftState)
+				// cancel context and make a new one
+				n.stateCtxCancel()
+				n.newContext(ctx)
+
+				go n.runCandidate()
+			default:
+				n.log.Panicf("%s state not yet implemented!\n", raftState)
+			}
 		}
 	}
+}
+
+func (n *Node) Diagnostics() string {
+	return "diagnostics"
+}
+
+func (n *Node) newContext(parent context.Context) {
+	ctx, cancel := context.WithCancel(parent)
+	n.stateCtx = ctx
+	n.stateCtxCancel = cancel
 }

@@ -96,3 +96,16 @@ func (r *Raft) resetElectionTimeout(dur time.Duration) {
 
 	r.electionTimeout = dur
 }
+
+func (rs RaftState) String() string {
+	switch rs {
+	case Candidate:
+		return "Candidate"
+	case Follower:
+		return "Follower"
+	case Leader:
+		return "Leader"
+	default:
+		panic(fmt.Sprintf("unexpected main.RaftState: %#v", rs))
+	}
+}
