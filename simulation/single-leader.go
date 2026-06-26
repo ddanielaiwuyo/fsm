@@ -60,50 +60,11 @@ func main() {
 	sim.Run()
 }
 
-func DefaultSimulation() *Simulation {
-	l := rlog.NewHumaneLogger("0", "simulation", 0, os.Stdout)
-	addrs := []string{
-		"localhost:4000",
-	}
-
-	totalNodes := 3
-
-	return &Simulation{
-		TotalNodes: totalNodes,
-		Addresses:  addrs,
-		log:        l,
-	}
-}
-
-func parseConfig(path string) (*Simulation, error) {
-	if len(strings.ReplaceAll(path, " ", "")) == 0 {
-		path = defaultSimulationConfigPath
-		fmt.Printf("using default cluster config for simulation\n\n")
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("could not load config. %w ", err)
-	}
-
-	cfg := DefaultSimulation()
-	if _, err := toml.Decode(string(content), cfg); err != nil {
-		fmt.Println("could not parse config file: ", err)
-		fmt.Println("using defaults")
-		cfg = DefaultSimulation()
-	}
-
-	return cfg, nil
-
-}
-
 const defaultForceTimeInterval = time.Millisecond * 10
 
 func (sc *Simulation) Run() {
-	ctx, cancel := signal.NotifyContext(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-
-	sc.log.Println("", sc)
 
 	wg := sync.WaitGroup{}
 	for idx := range sc.TotalNodes {
@@ -159,3 +120,41 @@ func (sc *Simulation) sendAppendEntries(ctx context.Context, d *rpc.Client, forc
 		}
 	}
 }
+  
+func DefaultSimulation() *Simulation {
+	l := rlog.NewHumaneLogger("0", "simulation", 0, os.Stdout)
+	addrs := []string{
+		"localhost:4000",
+	}
+
+	totalNodes := 3
+
+	return &Simulation{
+		TotalNodes: totalNodes,
+		Addresses:  addrs,
+		log:        l,
+	}
+}
+
+func parseConfig(path string) (*Simulation, error) {
+	if len(strings.ReplaceAll(path, " ", "")) == 0 {
+		path = defaultSimulationConfigPath
+		fmt.Printf("using default cluster config for simulation\n\n")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("could not load config. %w ", err)
+	}
+
+	cfg := DefaultSimulation()
+	if _, err := toml.Decode(string(content), cfg); err != nil {
+		fmt.Println("could not parse config file: ", err)
+		fmt.Println("using defaults")
+		cfg = DefaultSimulation()
+	}
+
+	return cfg, nil
+
+}
+

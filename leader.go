@@ -29,6 +29,7 @@ func (n *Node) runLeader(logger raftlogger.RLogger) {
 				n.raft.updateTerm(action.newTerm, action.newLeader)
 				logger.Println("leader dropping down to follower succesfully updated term, timeout reset", n.Diagnostics())
 				n.transition <- Follower
+				return
 
 			default:
 				logger.Panic("Unhandled RPC Not yet implemented:", req.payload, n.Diagnostics())
