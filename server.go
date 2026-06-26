@@ -4,22 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	rlog "fsm/raftlogger"
 	"net"
 	"net/rpc"
-	"os"
 )
 
 type Server struct {
 	id       string
 	addr     string
 	incoming chan RPC
-	log      *log.Logger
+	log      rlog.RLogger
 }
 
-func NewServer(id, addr string, incoming chan RPC) *Server {
-	prefix := fmt.Sprintf("(%s:server) ", id)
-	logger := log.New(os.Stdout, prefix, log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
+func NewServer(id, addr string, incoming chan RPC, logger rlog.RLogger) *Server {
+	// logger := log.New(os.Stdout, prefix, log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
 	return &Server{
 		id:       id,
 		addr:     addr,

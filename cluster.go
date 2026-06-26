@@ -41,7 +41,7 @@ func DefaultCluster() *Cluster {
 
 	for i, addr := range addrs {
 		serverAddr, peers := filterAddr(addr, addrs)
-		n, err := NewNode(fmt.Sprintf("%d", i+1), serverAddr, peers)
+		n, err := NewNode(fmt.Sprintf("%d", i+1), serverAddr, peers, nil)
 		if err != nil {
 			l.Println("could not create node with addr: ", serverAddr, err)
 			totalNodes -= 1

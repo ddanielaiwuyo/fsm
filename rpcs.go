@@ -58,7 +58,7 @@ func (s *Server) AppendEntryRPC(req AppendEntryRequest, res *AppendEntryReply) e
 			Message: "this node is down, an internal error occured",
 		}
 
-		s.log.Panicf(`received unenxpected reply from for AppendEntryRPC. Got: %+v`, payload)
+		s.log.Panic(`received unenxpected reply from for AppendEntryRPC. Got: %+v`, payload)
 	}
 
 	*res = *payload
@@ -78,7 +78,7 @@ func (s *Server) VoteRequestRPC(req VoteRequest, res *VoteReply) error {
 			Message: "this node is down, an internal error occured",
 		}
 
-		s.log.Panicf(`received unenxpected reply from for AppendEntryRPC. Got: %+v`, payload)
+		s.log.Panic(`received unenxpected reply from for AppendEntryRPC. Got: %+v`, payload)
 	}
 
 	*res = *payload

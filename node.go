@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	rlog "fsm/raftlogger"
+	"io"
 	"net/rpc"
 	"os"
 )
@@ -55,18 +56,19 @@ const (
 	defaultChanBuffer = 1
 )
 
-func NewNode(id string, address string, peers []string) (*Node, error) {
+func NewNode(id string, address string, peers []string, out io.Writer) (*Node, error) {
 	raft := NewRaft(id)
 	incoming := make(chan RPC, defaultChanBuffer)
 
 	// purposely left unbuffered to enforce one state transition at a time
 	transition := make(chan RaftState)
 
-	server := NewServer(id, address, incoming)
-
-	// prefix := fmt.Sprintf("(%s:node) ", id)
-	// logger := log.New(os.Stdout, prefix, log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
-	logger := rlog.NewHumaneLogger(id, "node", 0, os.Stdout)
+	if out == nil {
+		out = os.Stdout
+	}
+	logger := rlog.NewHumaneLogger(id, "node", 0, out)
+	sl := rlog.NewHumaneLogger(id, "server", 0, out)
+	server := NewServer(id, address, incoming, sl)
 
 	return &Node{
 		id:         id,
