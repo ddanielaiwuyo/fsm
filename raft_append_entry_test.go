@@ -11,10 +11,9 @@ import (
 )
 
 func TestNodeStepsDown(t *testing.T) {
-	id := fmt.Sprintf("%s", t.Name())
 	addr := "localhost:4000"
 	peers := []string{}
-	node, err := NewNode(id, addr, peers, io.Discard)
+	node, err := NewNode(t.Name(), addr, peers, io.Discard)
 	if err != nil {
 		t.Error("Could not create NewNode ", err)
 	}
@@ -50,7 +49,14 @@ func TestNodeStepsDown(t *testing.T) {
 
 		go func() {
 			// we can ignore error here
-			node.incoming <- RPC{}
+			reply := make(chan RPCReply)
+			node.incoming <- RPC{AppendEntry, AppendEntryRequest{}, reply}
+			select {
+			case <-reply:
+				return
+			case <-t.Context().Done():
+				return
+			}
 		}()
 
 		// the node's internal term should match ours
