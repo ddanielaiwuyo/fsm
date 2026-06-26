@@ -26,3 +26,16 @@ go run simulation/single-leader.go
 ```
 
 
+
+Todos
+---
+- [X] Implement custom logger
+- [X] Adding tests
+- [X] Implementing simulation testing
+- [X] Starting cluster from a config file,  `cluster_config.toml` with default number of nodes 3
+- [X] Reimplement Follower 
+- [ ] Reimplement Leader
+- [ ] Reimplement Candidate
+
+
+
