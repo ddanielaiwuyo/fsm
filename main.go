@@ -7,6 +7,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
+	"time"
 )
 
 func main() {
@@ -15,6 +17,15 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for t := range ticker.C {
+			_ = t
+			fmt.Printf("\n\nGOROUTINES::::: %d\n\n", runtime.NumGoroutine())
+		}
+	}()
 
 	go func() {
 		if err := http.ListenAndServe("localhost:6061", nil); err != nil {

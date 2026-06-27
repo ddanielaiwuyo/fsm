@@ -131,15 +131,16 @@ func parseConfig(path string) (*Cluster, error) {
 }
 
 const (
-	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms
-	minInterval = 100
-	maxInterval = 500
+	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms, but 
+	// we're increasing it because that's too aggressive
+	minInterval = 400
+	maxInterval = 1500
 
 	// heartbeatInterval is the rate at which the node when in a [Leader] state sends
 	// heartbeats to the followers in the cluster. This value is hardcoded right now
 	// because the intervals for elections is always randomised between 100-500ms
 	// 10ms makes it very unlikely that a [Leader] doesn't delay in sending a heartbeat RPC
-	heartbeatInterval = time.Millisecond * 10
+	heartbeatInterval = time.Millisecond * 50
 )
 
 func randomTimeout(d time.Duration) time.Duration {
