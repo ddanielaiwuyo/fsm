@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	rlog "fsm/raftlogger"
+	"net/rpc"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,5 +37,7 @@ func (n *Node) runCandidate(logger rlog.RLogger) {
 	case <-n.stateCtx.Done():
 		return
 	}
+}
 
+func collectVote(ctx context.Context, d *rpc.Client, voteCount *atomic.Uint64) {
 }

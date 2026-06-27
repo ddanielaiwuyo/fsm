@@ -26,6 +26,12 @@ go run simulation/single-leader.go
 ```
 
 
+For monitoring
+---
+
+Visit [http://localhost:6061/debug/pprof/](http://localhost:6061/debug/pprof/), it uses go's
+[net/http/pprof](https://go.dev/blog/pprof) if you want more debugging info
+
 
 Todos
 ---
