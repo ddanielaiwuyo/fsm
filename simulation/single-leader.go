@@ -46,7 +46,7 @@ type Simulation struct {
 
 	log rlog.RLogger
 
-	// TODO: Pesists tells the simulation to increment the term till it get's accepted
+	// TODO: Persists tells the simulation to increment the term till it get's accepted
 	Persist bool
 }
 

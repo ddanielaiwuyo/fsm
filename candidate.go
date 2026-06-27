@@ -17,10 +17,7 @@ func (n *Node) runCandidate(logger rlog.RLogger) {
 	timer := time.NewTimer(timeout)
 
 	defer func() {
-		if !timer.Stop() {
-			<-timer.C
-		}
-
+		timer.Stop()
 		logger.Println("candidate mode terminated succesfully")
 	}()
 
@@ -39,4 +36,3 @@ func (n *Node) runCandidate(logger rlog.RLogger) {
 	}
 
 }
-

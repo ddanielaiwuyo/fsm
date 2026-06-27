@@ -15,12 +15,11 @@ import (
 )
 
 type Cluster struct {
-	// TotalNodes is the total number of nodes that the cluster will start up. Default
-	// is 3
+	// TotalNodes is the total number of nodes that the cluster will start up. Default is 3
 	TotalNodes int
 
-	// Addresses contains ip addresses for where each node will start. Defaults are all
-	// on localhost, from port 4000 to 4002.
+	// Addresses are ip addresses for the nodes to start.
+	// Defaults are localhost:4000 to 4002.
 	Addresses []string
 
 	raftNodes []*Node
@@ -131,7 +130,7 @@ func parseConfig(path string) (*Cluster, error) {
 }
 
 const (
-	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms, but 
+	// According to the Raft Paper, it's recommended for timeouts(election) to range from 100-500ms, but
 	// we're increasing it because that's too aggressive
 	minInterval = 400
 	maxInterval = 1500

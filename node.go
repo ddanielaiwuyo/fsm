@@ -229,7 +229,7 @@ func (n *Node) handleAppendEntry(req AppendEntryRequest, replyCh chan RPCReply, 
 		return action
 	}
 
-	// someone posing as a rouge leader
+	//  the request has same term but we haven't voted from them
 	replyCh <- RPCReply{
 		kind: AppendEntry,
 		payload: &AppendEntryReply{

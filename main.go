@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+const (
+	DebugAddr = "locahost:6061"
+)
+
 func main() {
 	cluster, err := parseConfig("")
 	if err != nil {
@@ -27,8 +31,10 @@ func main() {
 		}
 	}()
 
+	// TODO: Would want this to be by default, maybe later we could add flags to use trace.
+	// Not sure if this server could cost the application but it should me next to nothing
 	go func() {
-		if err := http.ListenAndServe("localhost:6061", nil); err != nil {
+		if err := http.ListenAndServe(DebugAddr, nil); err != nil {
 			fmt.Println("could not start ptrace server::", err)
 		}
 	}()

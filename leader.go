@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"sync"
 	"context"
+	"fmt"
 	rlog "fsm/raftlogger"
 	"net/rpc"
+	"sync"
 	"time"
 )
 
@@ -14,7 +14,6 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 	ticker := time.NewTicker(heartbeatInterval)
 	defer func() {
 		ticker.Stop()
-		logger.Println("leader state terminated succesfully")
 	}()
 
 	ctx, cancel := context.WithCancel(n.stateCtx)
@@ -23,29 +22,33 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 	wg := sync.WaitGroup{}
 
 	if len(n.connectedPeers) == 0 {
-		// we might want a resting state or Unit because it could possbily 
+		// we might want a resting state or Unit because it could possbily
 		// mean this node is the only one active in the cluster and others have died
 		logger.Println("todo::warning:: could not find any connected peer")
+		n.transition <- Follower
+		return
+
 	}
 
-	for idx,  rpcPeer := range n.connectedPeers  {
+	for idx, rpcPeer := range n.connectedPeers {
 		if rpcPeer != nil {
 			wg.Add(1)
 
 			childLogger := n.log.Inherit(fmt.Sprintf("%d-sendHB", idx))
 
-			go func(ctx context.Context, d *rpc.Client, logger rlog.RLogger){
+			go func(ctx context.Context, d *rpc.Client, logger rlog.RLogger) {
 				defer wg.Done()
-				sendHeartBeat(ctx, d,  heartbeatInterval, logger)
+				sendHeartBeat(ctx, d, heartbeatInterval, logger)
 			}(ctx, rpcPeer, childLogger)
 		}
 	}
 
 	// wait for all children to return
 	done := make(chan struct{})
-	go func(){
+	go func() {
 		wg.Wait()
 		done <- struct{}{}
+		logger.Println("DEBUG:: leader loop recvdvd")
 	}()
 
 	for {
@@ -86,7 +89,7 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 
 func sendHeartBeat(ctx context.Context, dial *rpc.Client, interval time.Duration, logger rlog.RLogger) {
 	ticker := time.NewTicker(interval)
-	defer func(){
+	defer func() {
 		ticker.Stop()
 		logger.Println("returning back to parent")
 	}()
@@ -95,7 +98,7 @@ func sendHeartBeat(ctx context.Context, dial *rpc.Client, interval time.Duration
 		select {
 		case <-ticker.C:
 			logger.Println("sending heartbeatRPC")
-			time.Sleep(2  * time.Second)
+			time.Sleep(2 * time.Second)
 			ticker.Reset(interval)
 
 		case <-ctx.Done():

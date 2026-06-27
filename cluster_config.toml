@@ -15,5 +15,5 @@ addresses = [
 forceTerm = 101
 heartbeat = 10
 
-# tells dev-tools to continue until it's in control of the raft
+# TODO: tells simulation to continue until it's in control of the raft
 persist = false
