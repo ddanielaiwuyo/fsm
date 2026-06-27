@@ -27,11 +27,11 @@ func TestNodeStepsDown(t *testing.T) {
 	// since the max amount of time before a node triggers election
 	// we'll wait till it's in a stable state otherwise force it
 	<-time.After(time.Second * 1)
-	if node.raft.state != Leader {
+	if node.raft.getState() != Leader {
 		node.transition <- Leader
 	}
 
-	if node.raft.state == Leader {
+	if node.raft.getState() == Leader {
 		// interrupt with a higer vote
 		d, err := rpc.Dial("tcp", addr)
 		if err != nil {
