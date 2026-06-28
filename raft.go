@@ -110,8 +110,8 @@ func (r *Raft) getCurrentLeader() string {
 }
 
 func (r *Raft) clearLeader() {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.votedFor = ""
 }
 
