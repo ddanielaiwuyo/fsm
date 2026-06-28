@@ -94,11 +94,13 @@ func (r *Raft) getState() RaftState {
 	return r.state
 }
 
-func (r *Raft) resetElectionTimeout(dur time.Duration) {
+func (r *Raft) resetElectionTimeout() time.Duration {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	dur := randomTimeout(time.Millisecond)
 	r.electionTimeout = dur
+	return dur
 }
 
 func (r *Raft) getCurrentLeader() string {

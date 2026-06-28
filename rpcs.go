@@ -40,8 +40,8 @@ type VoteRequest struct {
 
 type VoteReply struct {
 	Id       string
-	Term     string
-	votedFor bool
+	Term    uint64
+	VotedFor bool
 	Message  string
 }
 
@@ -78,7 +78,7 @@ func (s *Server) VoteRequestRPC(req VoteRequest, res *VoteReply) error {
 			Message: "this node is down, an internal error occured",
 		}
 
-		s.log.Panic(`received unenxpected reply from for AppendEntryRPC. Got: %+v`, payload)
+		s.log.Panic(`received unexpected reply from for VoteRequestRPC. Expected Vote kind. Got: %+v`, payload)
 	}
 
 	*res = *payload

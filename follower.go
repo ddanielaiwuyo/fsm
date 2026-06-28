@@ -49,6 +49,24 @@ func (n *Node) runFollower() {
 				logger.Println("succesfully updated term, timeout reset", n.Diagnostics())
 				ticker.Reset(n.raft.electionTimeout)
 
+			case Vote:
+				request, ok := req.payload.(VoteRequest)
+				// no point in relaying respose backup to the server because the server will still
+				// invalidate it and panic
+				if !ok {
+					logger.Panic("received wrong rpcRequet payload. Expected AppendEntry:", request, n.Diagnostics())
+				}
+
+				action := n.handleVoteRequest(request, req.reply, logger.Inherit("handleVoteRequest"))
+				if !action.action {
+					continue
+				}
+
+				n.raft.updateTerm(action.newTerm, action.newLeader)
+				logger.Println("succesfully updated term, timeout reset", n.Diagnostics())
+				ticker.Reset(n.raft.electionTimeout)
+
+
 			default:
 				logger.Panic("Unhandled RPC Not yet implemented:", req.payload, n.Diagnostics())
 			}

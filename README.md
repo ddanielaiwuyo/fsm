@@ -26,6 +26,12 @@ go run simulation/single-leader.go
 ```
 
 
+For monitoring
+---
+
+Visit [http://localhost:6061/debug/pprof/](http://localhost:6061/debug/pprof/), it uses go's
+[net/http/pprof](https://go.dev/blog/pprof) if you want more debugging info
+
 
 Todos
 ---
@@ -34,8 +40,8 @@ Todos
 - [X] Implementing simulation testing
 - [X] Starting cluster from a config file,  `cluster_config.toml` with default number of nodes 3
 - [X] Reimplement Follower 
-- [ ] Reimplement Leader
-- [ ] Reimplement Candidate
+- [X] Reimplement Leader
+- [X] Reimplement Candidate
 
 
 
