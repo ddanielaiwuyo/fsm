@@ -7,9 +7,19 @@ import (
 	"io"
 	"net/rpc"
 	"os"
+	"slices"
+	"sync"
 )
 
+type Peer struct {
+	id      int
+	addr    string
+	rpcConn *rpc.Client
+}
+
 type Node struct {
+	mu sync.Mutex
+
 	id string
 	// address is where the Node's server will listen for incoming RPC's
 	address string
@@ -36,8 +46,8 @@ type Node struct {
 	peers []string
 
 	// connectedPeers are connections that have been made when the [Node] was either
-	// a [Leader] or [Candidate].
-	connectedPeers []*rpc.Client
+	// a [Leader] or [Candidate]. This shoudl be accessed safely
+	rpcPeers []*Peer
 
 	// stateCtx cancels the active [Raft.State] listening when an the [Node] needs to
 	// shutdown. To cancel, call [Raft.stateCtxCancel]. After every cancel, a new ctx
@@ -70,6 +80,7 @@ func NewNode(id string, address string, peers []string, out io.Writer) (*Node, e
 	server := NewServer(id, address, incoming, sl)
 
 	return &Node{
+		mu:         sync.Mutex{},
 		id:         id,
 		address:    address,
 		raft:       raft,
@@ -77,6 +88,7 @@ func NewNode(id string, address string, peers []string, out io.Writer) (*Node, e
 		transition: transition,
 		server:     server,
 		peers:      peers,
+		rpcPeers:   []*Peer{},
 		log:        logger,
 	}, nil
 }
@@ -225,7 +237,7 @@ func (n *Node) handleAppendEntry(req AppendEntryRequest, replyCh chan RPCReply, 
 		action.action = true
 		action.newLeader = req.Id
 		action.newTerm = req.Term
-		logger.Println("appendEntry was from a higher term:", req, n.Diagnostics())
+		logger.Println("appendEntry was from a valid leader term:", req, n.Diagnostics())
 		return action
 	}
 
@@ -253,7 +265,7 @@ func (n *Node) Diagnostics() string {
 	state := n.raft.getState().String()
 	votedFor := n.raft.getCurrentLeader()
 
-	diagnostics := fmt.Sprintf("diagnostics: { term: %d, state: %s, votedFor: %s }",
+	diagnostics := fmt.Sprintf("diagnostics: { term: %d, state: %s, votedFor|leader: %s }",
 		term, state, votedFor)
 	return diagnostics
 }
@@ -269,4 +281,84 @@ func (n *Node) newContext(parent context.Context) {
 		n.stateCtx = ctx
 		n.stateCtxCancel = cancel
 	}
+}
+
+func (n *Node) getRPCPeers() []*Peer {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.rpcPeers
+}
+
+func (n *Node) addRPCPeer(peers ...*Peer) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, p := range peers {
+		if p != nil && !slices.Contains(n.rpcPeers, p) {
+			n.rpcPeers = append(n.rpcPeers, p)
+		}
+	}
+}
+
+/*
+term higher && follower -> actions: yes  *
+term same && follower -> actions: no
+
+term_higher && candidate -> actions: yes *
+term_same && candidate && votedFor == "" -> yes
+term_lower && candidate -> no *
+
+term_higher && leader -> actions: yes *
+term_same && leade -> ignore *
+*/
+func (n *Node) handleVoteRequest(req VoteRequest, replyCh chan RPCReply, logger rlog.RLogger) Action {
+	currentTerm := n.raft.getTerm()
+	currentLeader := n.raft.getCurrentLeader()
+
+	action := Action{}
+	if req.Term > currentTerm {
+		replyCh <- RPCReply{
+			kind: AppendEntry,
+			payload: &VoteReply{
+				Id:       n.id,
+				VotedFor: true,
+				Term:     req.Term,
+				Message:  "yielding my vote to you",
+			},
+		}
+		action.action = true
+		action.newLeader = req.Id
+		action.newTerm = req.Term
+		logger.Println("requestRPC was from a a higher term:", req, n.Diagnostics())
+		return action
+	} else if req.Term < currentTerm {
+		action.action = false
+		replyCh <- RPCReply{
+			kind: Vote,
+			payload: &VoteReply{
+				Id:       n.id,
+				VotedFor: false,
+				Term:     currentTerm,
+				Message:  "you have an outdated term",
+			},
+		}
+		logger.Println("requestVote was from a lower term:", req, n.Diagnostics())
+		return action
+	} else if req.Term == currentTerm && currentLeader == "" {
+		// possibly in a candidate state and someone requested our vote
+		replyCh <- RPCReply{
+			kind: Vote,
+			payload: &VoteReply{
+				Id:       n.id,
+				VotedFor: true,
+				Term:     req.Term,
+				Message:  "yielding my vote to you",
+			},
+		}
+		action.action = true
+		action.newLeader = req.Id
+		action.newTerm = req.Term
+		logger.Println("voteRPC had same term, but reached first and I have no leader:", req, n.Diagnostics())
+		return action
+	}
+	return action
 }

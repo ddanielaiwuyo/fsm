@@ -40,8 +40,8 @@ type VoteRequest struct {
 
 type VoteReply struct {
 	Id       string
-	Term     string
-	votedFor bool
+	Term    uint64
+	VotedFor bool
 	Message  string
 }
 

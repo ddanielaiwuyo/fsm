@@ -4,25 +4,29 @@ import (
 	"context"
 	"fmt"
 	rlog "fsm/raftlogger"
-	"net/rpc"
 	"sync"
 	"time"
 )
 
+const (
+	// heartbeatInterval is the rate at which the node when in a [Leader] state sends
+	// heartbeats to the followers in the cluster. This value is hardcoded right now
+	// because the intervals for elections is always randomised between 100-500ms
+	// 10ms makes it very unlikely that a [Leader] doesn't delay in sending a heartbeat RPC
+	heartbeatInterval = time.Millisecond * 200
+)
+
 func (n *Node) runLeader(logger rlog.RLogger) {
 	logger.Println("leader state transitioned successfully", n.Diagnostics())
-	ticker := time.NewTicker(heartbeatInterval)
-	defer func() {
-		ticker.Stop()
-	}()
 
 	ctx, cancel := context.WithCancel(n.stateCtx)
 	defer cancel()
 
 	wg := sync.WaitGroup{}
+	rpcPeers := n.getRPCPeers()
 
-	if len(n.connectedPeers) == 0 {
-		// we might want a resting state or Unit because it could possbily
+	if len(rpcPeers) == 0 {
+		// we might want a resting state or Shutdown because it could possbily
 		// mean this node is the only one active in the cluster and others have died
 		logger.Println("todo::warning:: could not find any connected peer")
 		n.transition <- Follower
@@ -30,15 +34,16 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 
 	}
 
-	for idx, rpcPeer := range n.connectedPeers {
+	currentPeers := n.getRPCPeers()
+	for idx, rpcPeer := range currentPeers {
 		if rpcPeer != nil {
 			wg.Add(1)
 
 			childLogger := n.log.Inherit(fmt.Sprintf("%d-sendHB", idx))
 
-			go func(ctx context.Context, d *rpc.Client, logger rlog.RLogger) {
+			go func(ctx context.Context, rpcPeer *Peer, logger rlog.RLogger) {
 				defer wg.Done()
-				sendHeartBeat(ctx, d, heartbeatInterval, logger)
+				n.sendHeartBeat(ctx, rpcPeer, heartbeatInterval, logger)
 			}(ctx, rpcPeer, childLogger)
 		}
 	}
@@ -87,20 +92,32 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 	}
 }
 
-func sendHeartBeat(ctx context.Context, dial *rpc.Client, interval time.Duration, logger rlog.RLogger) {
+// TODO: Make a way for them to tell the leader that it's gotten demoted, ie a clietn returns
+// a higher term maybe through a channel
+func (n *Node) sendHeartBeat(ctx context.Context, peer *Peer, interval time.Duration, logger rlog.RLogger) {
 	ticker := time.NewTicker(interval)
 	defer func() {
 		ticker.Stop()
 		logger.Println("returning back to parent")
 	}()
 
+	req := AppendEntryRequest{
+		Id:      n.id,
+		Term:    n.raft.getTerm(),
+		Message: "This is a heartbeat message",
+	}
+
+	reply := AppendEntryReply{}
+
 	for {
 		select {
 		case <-ticker.C:
 			logger.Println("sending heartbeatRPC")
-			time.Sleep(2 * time.Second)
-			ticker.Reset(interval)
-
+			if err := peer.rpcConn.Call("Server.AppendEntryRPC", req, &reply); err != nil {
+				logger.Println("Failed to send heartbeat", err, peer.id, peer.addr)
+				return
+			}
+			logger.Println("reply: ", reply, peer.addr)
 		case <-ctx.Done():
 			return
 		}
