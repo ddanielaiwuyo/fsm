@@ -39,6 +39,12 @@ Visit [http://localhost:6061/debug/pprof/](http://localhost:6061/debug/pprof/), 
 [net/http/pprof](https://go.dev/blog/pprof).
 
 
+Next 
+---
+- [ ] Log replication across the cluster
+- [ ] Contorl plane for killing speciific nodes
+
+
 Todos
 ---
 - [X] Implement custom logger
@@ -49,3 +55,5 @@ Todos
     - [X] Reimplement Follower 
     - [X] Reimplement Leader
     - [X] Reimplement Candidate
+
+
