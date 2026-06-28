@@ -22,8 +22,9 @@ go run .
 
 Run simulation
 ---
-These serve to assert the behaviour we expect as writing tests are hard, we can often describe what we 
-expect from a healthy cluster and interrupt it with these simulations. At the moment they share 
+These serve to assert the behaviour we expect as writing tests are hard without introducing dataraces on the test itself or messing 
+with the internal concurrent structure of the node. The simulations help to describe what we 
+expect from a healthy cluster by interrupting it. At the moment they share 
 configs with the Cluster itself, `cluster_config.toml`, later on, we plan on adding more configuration 
 options for the simulations
 ```bash
