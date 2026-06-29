@@ -97,9 +97,9 @@ func (n *Node) runLeader(logger rlog.RLogger) {
 	}
 }
 
-// TODO: Make a way for them to tell the leader that it's gotten demoted, ie a clietn returns
-// a higher term maybe through a channel
 func (n *Node) sendHeartBeat(ctx context.Context, peer *Peer, interval time.Duration, logger rlog.RLogger) {
+	// TODO: Might also be worth retrying connections with  dropped peers incase it was just 
+	// a network glitch
 	ticker := time.NewTicker(interval)
 	defer func() {
 		ticker.Stop()
