@@ -138,6 +138,7 @@ func dialPeers(network string, peers []string, logger rlog.RLogger) ([]*Peer, in
 		if err != nil {
 			logger.Println("could not dial: ", addr, err)
 			failed++
+			continue
 		}
 
 		p := &Peer{id: id, addr: addr, rpcConn: dial}
